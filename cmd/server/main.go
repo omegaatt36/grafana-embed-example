@@ -1,10 +1,7 @@
 package main
 
 import (
-	"crypto/rsa"
-	"crypto/x509"
 	_ "embed"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"log"
@@ -18,9 +15,6 @@ import (
 //go:embed index.html
 var indexHTML string
 
-//go:embed rsa.pem
-var privateKey string
-
 func getIndexHtml() (*template.Template, error) {
 	index, err := template.New("index").Parse(indexHTML)
 	if err != nil {
@@ -30,35 +24,21 @@ func getIndexHtml() (*template.Template, error) {
 	return index, nil
 }
 
-func getPrivateKey() (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(privateKey))
-	if block == nil || block.Type != "RSA PRIVATE KEY" {
-		panic("Failed to decode PEM block containing private key")
-	}
-
-	pk, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		panic(err)
-	}
-
-	return pk, nil
-}
-
 func generateJWT(w http.ResponseWriter, r *http.Request) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-		"user":  "demo",
-		"email": "user@demo.com",
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(time.Hour * 1).Unix(),
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, jwt.MapClaims{
+		"user": jwt.MapClaims{
+			"email": "viewer@kryptogo.com",
+			"name":  "viewer",
+		},
+		"sub":  "viewer@kryptogo.com",
+		"role": "Viewer",
+		"iat":  time.Now().Unix(),
+		"exp":  time.Now().Add(time.Hour * 1).Unix(),
 	})
 
-	pk, err := getPrivateKey()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	token.Header["kid"] = *keyID
 
-	tokenString, err := token.SignedString(pk)
+	tokenString, err := token.SignedString([]byte(*secretKey))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -84,17 +64,33 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func auditLog(handler http.HandlerFunc) http.HandlerFunc {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Printf("[%s] %s %s\n", time.Now().Format("2006-01-02 15:04:05"), r.Method, r.URL)
+		handler(w, r)
+	})
+}
+
 var grafanaDashboardURL *string = flag.String("grafana-dashboard-url", "", "grafana dashboard url")
+var secretKey *string = flag.String("secret-key", "", "secret key")
+var keyID *string = flag.String("key-id", "", "key-id")
 
 func main() {
 	flag.Parse()
+
+	if secretKey == nil || *secretKey == "" {
+		log.Fatal("secret-key is required")
+	}
 	if grafanaDashboardURL == nil || *grafanaDashboardURL == "" {
 		log.Fatal("grafana-dashboard-url is required")
 	}
+	if keyID == nil || *keyID == "" {
+		log.Fatal("key-id is required")
+	}
 
 	router := http.NewServeMux()
-	router.HandleFunc("GET /token", generateJWT)
-	router.HandleFunc("GET /", serveIndex)
+	router.HandleFunc("GET /token", auditLog(generateJWT))
+	router.HandleFunc("GET /", auditLog(serveIndex))
 
 	fmt.Println("Server is running on port 8000")
 	if err := http.ListenAndServe(":8000", router); err != nil {

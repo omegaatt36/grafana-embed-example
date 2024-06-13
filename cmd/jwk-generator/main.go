@@ -1,59 +1,54 @@
 package main
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
+	"encoding/json"
+	"flag"
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/google/uuid"
+	"gopkg.in/square/go-jose.v2"
 )
 
+var secretKey *string = flag.String("secret-key", "", "secret key")
+var keyID *string = flag.String("key-id", "", "key-id")
+
 func main() {
-	err := createKeys()
-	if err != nil {
-		fmt.Printf("Error creating keys: %v\n", err)
-	}
-}
-
-func createKeys() error {
-	keyID := uuid.New().String()
-
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return fmt.Errorf("failed to generate private key: %v", err)
+	flag.Parse()
+	if secretKey == nil || *secretKey == "" {
+		log.Fatal("secret-key is required")
 	}
 
-	privKeyPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "RSA PRIVATE KEY",
-			Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
-		},
-	)
-
-	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to marshal public key: %v", err)
-	}
-	pubKeyPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "PUBLIC KEY",
-			Bytes: pubKeyBytes,
-		},
-	)
-
-	err = os.WriteFile("rsa.pem", privKeyPEM, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write private key to file: %v", err)
+	if keyID == nil || *keyID == "" {
+		log.Fatal("key-id is required")
 	}
 
-	err = os.WriteFile("rsa_pub.pem", pubKeyPEM, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write public key to file: %v", err)
+	rawKey := []byte(*secretKey)
+
+	symKey := jose.JSONWebKey{
+		Key:       rawKey,
+		KeyID:     *keyID,
+		Algorithm: string(jose.HS512),
+		Use:       "sig",
 	}
 
-	fmt.Printf("Keys created successfully with key ID: %s\n", keyID)
-	return nil
+	jwkJSON, err := json.MarshalIndent(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{symKey}}, "", "  ")
+	if err != nil {
+		fmt.Printf("Failed to marshal JWK: %s\n", err)
+		return
+	}
+
+	file, err := os.Create("jwks.json")
+	if err != nil {
+		fmt.Printf("Failed to create file: %s\n", err)
+		return
+	}
+	defer file.Close()
+
+	if _, err := file.Write(jwkJSON); err != nil {
+		fmt.Printf("Failed to write JWK to file: %s\n", err)
+		return
+	}
+
+	fmt.Println("JWK successfully written to jwks.json")
 }

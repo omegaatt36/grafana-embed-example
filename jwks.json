@@ -1,0 +1,11 @@
+{
+  "keys": [
+    {
+      "use": "sig",
+      "kty": "oct",
+      "kid": "grafana-embed-example",
+      "alg": "HS512",
+      "k": "ZHVIL3NyeXdRbUpPbUU4RkRrVWJKazJIdXNhYmU4TEZVWllyMnBvSUxFNVJFZG92b011OXRveEJEdDEwazg1cngreVZIRWxzYS82N3lnSENTZUt4Wnd2VWZMZ3I2cUdPQU5UV3pTVnkzUnZ0L00xQVJBbkZlSkVKdlAwM0YzQjlhVTFRRDhrcDdVb3E5YXFCby9ualY2c1JDY1JnNG5hNGFHUkJqQVkvRk1LMXRpeHhnS0NpSEFJYk0xZDc4aXM0dkY4aHlJb3hCVW9GOU9LWnB5MDVTMWNRMjV2UldyUHBxc1U4ZUE9PQ"
+    }
+  ]
+}
